@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Azure Files SMB PoC</title>
+  <style>
+    :root {
+      --bg: #f5f7fb;
+      --card: #ffffff;
+      --ink: #10233a;
+      --muted: #5b6b7b;
+      --line: #d7e0ea;
+      --accent: #0078d4;
+      --accent-ink: #ffffff;
+      --ok: #107c10;
+      --err: #a4262c;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      font-family: "Segoe UI", "Segoe UI Variable", Tahoma, Geneva, Verdana, sans-serif;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 10% -10%, #d9ecff 0, transparent 40%),
+        radial-gradient(circle at 90% 0, #e8f4ff 0, transparent 42%),
+        var(--bg);
+      min-height: 100vh;
+      display: grid;
+      place-items: center;
+      padding: 24px;
+    }
+
+    .panel {
+      width: min(900px, 100%);
+      background: var(--card);
+      border: 1px solid var(--line);
+      border-radius: 14px;
+      box-shadow: 0 12px 30px rgba(16, 35, 58, 0.08);
+      overflow: hidden;
+    }
+
+    .head {
+      padding: 18px 20px;
+      border-bottom: 1px solid var(--line);
+      background: linear-gradient(95deg, #ffffff, #f7fbff);
+    }
+
+    .head h1 {
+      margin: 0 0 6px;
+      font-size: 20px;
+    }
+
+    .head p {
+      margin: 0;
+      color: var(--muted);
+      font-size: 14px;
+    }
+
+    .content {
+      padding: 18px 20px 20px;
+      display: grid;
+      gap: 16px;
+    }
+
+    .row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+
+    input[type="file"] {
+      max-width: 100%;
+    }
+
+    button {
+      border: 0;
+      background: var(--accent);
+      color: var(--accent-ink);
+      padding: 10px 14px;
+      border-radius: 8px;
+      font-weight: 600;
+      cursor: pointer;
+    }
+
+    button.secondary {
+      background: #e6f2fb;
+      color: #08406f;
+    }
+
+    button:disabled {
+      opacity: 0.7;
+      cursor: not-allowed;
+    }
+
+    .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .status {
+      min-height: 22px;
+      font-size: 14px;
+      font-weight: 600;
+    }
+
+    .status.ok {
+      color: var(--ok);
+    }
+
+    .status.err {
+      color: var(--err);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 14px;
+    }
+
+    th, td {
+      padding: 10px;
+      border-bottom: 1px solid var(--line);
+      text-align: left;
+      vertical-align: top;
+    }
+
+    th {
+      background: #f7fbff;
+      font-size: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.04em;
+      color: #33506f;
+    }
+
+    .empty {
+      color: var(--muted);
+      padding: 14px 0;
+    }
+
+    @media (max-width: 640px) {
+      .head h1 {
+        font-size: 18px;
+      }
+
+      table {
+        font-size: 13px;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="panel">
+    <header class="head">
+      <h1>Azure Files SMB PoC</h1>
+      <p>Upload files and view share contents from <code>D:\\home\\hangfire</code>.</p>
+    </header>
+
+    <section class="content">
+      <div class="row">
+        <input id="fileInput" type="file" aria-label="Choose file to upload">
+        <button id="uploadBtn">Upload</button>
+        <button id="refreshBtn" class="secondary">Refresh Files</button>
+      </div>
+
+      <div id="status" class="status" role="status" aria-live="polite"></div>
+      <div id="meta" class="meta"></div>
+
+      <div>
+        <table aria-label="Uploaded files">
+          <thead>
+            <tr>
+              <th>Name</th>
+              <th>Size (bytes)</th>
+              <th>Last Modified (UTC)</th>
+            </tr>
+          </thead>
+          <tbody id="filesBody"></tbody>
+        </table>
+        <div id="empty" class="empty" hidden>No files found.</div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const statusEl = document.getElementById('status');
+    const metaEl = document.getElementById('meta');
+    const filesBody = document.getElementById('filesBody');
+    const emptyEl = document.getElementById('empty');
+    const fileInput = document.getElementById('fileInput');
+    const uploadBtn = document.getElementById('uploadBtn');
+    const refreshBtn = document.getElementById('refreshBtn');
+
+    function setStatus(message, type) {
+      statusEl.textContent = message || '';
+      statusEl.className = 'status' + (type ? ` ${type}` : '');
+    }
+
+    function renderFiles(payload) {
+      filesBody.innerHTML = '';
+      const files = payload.files || [];
+
+      metaEl.textContent = `Mount path: ${payload.mountPath || 'n/a'} | File count: ${payload.count || 0}`;
+
+      if (!files.length) {
+        emptyEl.hidden = false;
+        return;
+      }
+
+      emptyEl.hidden = true;
+
+      for (const file of files) {
+        const tr = document.createElement('tr');
+        tr.innerHTML =
+          `<td>${file.name}</td>` +
+          `<td>${file.sizeBytes}</td>` +
+          `<td>${file.lastModifiedUtc}</td>`;
+        filesBody.appendChild(tr);
+      }
+    }
+
+    async function loadFiles() {
+      setStatus('Loading files...');
+      try {
+        const res = await fetch('/files');
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Failed to load files.');
+        }
+        renderFiles(data);
+        setStatus('Files loaded.', 'ok');
+      } catch (err) {
+        setStatus(err.message, 'err');
+      }
+    }
+
+    async function uploadFile() {
+      const file = fileInput.files && fileInput.files[0];
+      if (!file) {
+        setStatus('Select a file first.', 'err');
+        return;
+      }
+
+      uploadBtn.disabled = true;
+      setStatus('Uploading...');
+
+      try {
+        const form = new FormData();
+        form.append('file', file);
+
+        const res = await fetch('/upload', {
+          method: 'POST',
+          body: form
+        });
+
+        const data = await res.json();
+        if (!res.ok) {
+          throw new Error(data.error || 'Upload failed.');
+        }
+
+        setStatus(`Uploaded: ${data.file.storedName}`, 'ok');
+        fileInput.value = '';
+        await loadFiles();
+      } catch (err) {
+        setStatus(err.message, 'err');
+      } finally {
+        uploadBtn.disabled = false;
+      }
+    }
+
+    uploadBtn.addEventListener('click', uploadFile);
+    refreshBtn.addEventListener('click', loadFiles);
+
+    loadFiles();
+  </script>
+</body>
+</html>

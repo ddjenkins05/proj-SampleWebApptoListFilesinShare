@@ -1,0 +1,19 @@
+# Node
+node_modules/
+sample-app/node_modules/
+
+# Archives
+*.zip
+
+# Environment
+*.env
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+
+# Bicep params and local artifacts
+*.bicepparam
+*.azure*
