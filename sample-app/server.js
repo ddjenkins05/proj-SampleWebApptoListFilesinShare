@@ -7,11 +7,16 @@ const app = express();
 const port = process.env.PORT || 3000;
 const rawMountPath = process.env.STORAGE_MOUNT_PATH || '/home/hangfire';
 let mountPath = rawMountPath;
-// App Service requires POSIX-style mountPath in config (e.g. /home/hangfire).
-// On Windows Node runtime, convert leading "/" to the Windows D: drive before normalizing.
+// Normalize mount path for App Service Windows runtime:
+// - POSIX '/home/..' -> 'D:/home/..'
+// - UNC or backslash paths like '\\mounts\\share' -> 'D:\\mounts\\share'
 if (process.platform === 'win32') {
   if (mountPath.startsWith('/')) {
-    mountPath = 'D:' + mountPath; // e.g. '/home/hangfire' -> 'D:/home/hangfire'
+    mountPath = 'D:' + mountPath; // '/home/hangfire' -> 'D:/home/hangfire'
+  } else if (/^\\+/.test(mountPath)) {
+    // Replace multiple leading backslashes with a single pair, then prefix with D:
+    const backslashPath = mountPath.replace(/^\\+/, '\\\\');
+    mountPath = 'D:' + backslashPath; // '\\mounts\\hangfire' -> 'D:\\mounts\\hangfire'
   }
 }
 mountPath = path.normalize(mountPath);

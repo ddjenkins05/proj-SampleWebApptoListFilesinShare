@@ -158,7 +158,7 @@
   <main class="panel">
     <header class="head">
       <h1>Azure Files SMB PoC</h1>
-      <p>Upload files and view share contents from <code>D:\\home\\hangfire</code>.</p>
+      <p>Upload files and view share contents from the mounted Azure File share (<code id="mountPathHint">loading...</code>).</p>
     </header>
 
     <section class="content">
@@ -195,6 +195,7 @@
     const fileInput = document.getElementById('fileInput');
     const uploadBtn = document.getElementById('uploadBtn');
     const refreshBtn = document.getElementById('refreshBtn');
+    const mountPathHint = document.getElementById('mountPathHint');
 
     function setStatus(message, type) {
       statusEl.textContent = message || '';
@@ -206,6 +207,9 @@
       const files = payload.files || [];
 
       metaEl.textContent = `Mount path: ${payload.mountPath || 'n/a'} | File count: ${payload.count || 0}`;
+      if (mountPathHint) {
+        mountPathHint.textContent = payload.mountPath || 'n/a';
+      }
 
       if (!files.length) {
         emptyEl.hidden = false;

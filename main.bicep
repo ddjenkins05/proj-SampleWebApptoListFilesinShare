@@ -36,6 +36,8 @@ var normalizedStorageAccountName = toLower(storageAccountName)
 // For Windows Web Apps the mount path must be a sub-directory of \\mounts
 // Use UNC-style path here (escaped backslashes) so the ARM property is valid.
 var storageMountPath = '\\mounts\\${fileShareName}'
+// POSIX-style mount path exposed to the app (app reads this from env)
+var posixMountPath = '/home/${fileShareName}'
 
 resource storageAccount 'Microsoft.Storage/storageAccounts@2024-01-01' = {
   name: normalizedStorageAccountName
@@ -110,7 +112,7 @@ resource webAppAppSettings 'Microsoft.Web/sites/config@2024-04-01' = {
     SCM_DO_BUILD_DURING_DEPLOYMENT: 'true'
     STORAGE_ACCOUNT_NAME: storageAccount.name
     STORAGE_SHARE_NAME: fileShare.name
-    STORAGE_MOUNT_PATH: storageMountPath
+    STORAGE_MOUNT_PATH: posixMountPath
   }
 }
 
@@ -131,5 +133,5 @@ resource webAppAzureStorageMount 'Microsoft.Web/sites/config@2024-04-01' = {
 output webAppUrl string = 'https://${webApp.properties.defaultHostName}'
 output storageAccountId string = storageAccount.id
 output fileShareResourceId string = fileShare.id
-output mountedPathInWebApp string = storageMountPath
+output mountedPathInWebApp string = posixMountPath
 output smbUncPath string = '\\\\${storageAccount.name}.file.${environment().suffixes.storage}\\${fileShare.name}'
